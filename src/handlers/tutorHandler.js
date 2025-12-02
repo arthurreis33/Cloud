@@ -29,7 +29,7 @@ export const handleQuestion = async (req, res) => {
     } catch (err) {
         console.log('[Tutor] Falha ao gerar resposta:', err.message);
         return res.status(500).json({ 
-            error: 'Erro ao processar pergunta'
+            error: 'Erro ao processar pergunta, tente novamente mais tarde'
         });
     }
 };
