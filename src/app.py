@@ -5,7 +5,7 @@ from src.routes.index import router
 app = FastAPI(
     title='IsCoolGPT',
     description='Assistente inteligente de estudos em Cloud Computing',
-    version='2.0.0'
+    version='3.0.0'
 )
 
 app.include_router(router)

@@ -9,7 +9,7 @@ async def root():
     return {
         'status': 'online',
         'service': 'IsCoolGPT',
-        'version': '2.0.0',
+        'version': '3.0.0',
         'endpoints': {
             'tutor': '/api/tutor/ask'
         }
