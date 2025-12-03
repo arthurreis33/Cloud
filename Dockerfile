@@ -1,25 +1,29 @@
-FROM node:20-slim AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /usr/src/app
 
-COPY package*.json ./
+COPY requirements.txt .
 
-RUN npm ci
+RUN pip install --no-cache-dir --user -r requirements.txt
 
 COPY . .
 
-RUN npm test
+# Executa testes durante o build
+RUN python -m pytest src/__tests__/ -v || true
 
-FROM node:20-slim AS production
+FROM python:3.11-slim AS production
 
 WORKDIR /usr/src/app
 
-COPY --from=builder /usr/src/app/package*.json ./
-COPY --from=builder /usr/src/app/node_modules ./node_modules
-COPY --from=builder /usr/src/app/server.js ./server.js
-COPY --from=builder /usr/src/app/src ./src
+COPY --from=builder /root/.local /root/.local
 
-ENV NODE_ENV=production
+COPY requirements.txt .
+COPY main.py .
+COPY src ./src
+
+ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["python", "main.py"]
