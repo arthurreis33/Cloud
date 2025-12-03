@@ -15,7 +15,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     # Só executa se o CI passou
-    needs: []
+    needs: [build-and-test]
     
     steps:
       - name: Checkout
@@ -43,9 +43,70 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Deploy no Amazon ECS
+        id: deploy-ecs
         run: |
+          TASK_DEFINITION=$(aws ecs describe-task-definition \
+            --task-definition iscoolgpt-task \
+            --region $AWS_REGION \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service $ECS_SERVICE \
-            --force-new-deployment
+            --force-new-deployment \
+            --region $AWS_REGION
+          
+          echo "task_definition=$TASK_DEFINITION" >> $GITHUB_OUTPUT
+          echo "deploy_timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Aguardar estabilização do serviço
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --region $AWS_REGION \
+            || echo "Timeout aguardando estabilização (pode estar inicializando)"
+
+      - name: Obter informações da tarefa
+        id: get-task-info
+        run: |
+          TASKS=$(aws ecs list-tasks \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_SERVICE \
+            --region $AWS_REGION \
+            --query 'taskArns[0]' \
+            --output text)
+          
+          if [ ! -z "$TASKS" ] && [ "$TASKS" != "None" ]; then
+            TASK_IP=$(aws ecs describe-tasks \
+              --cluster $ECS_CLUSTER \
+              --tasks $TASKS \
+              --region $AWS_REGION \
+              --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
+              --output text)
+            
+            if [ ! -z "$TASK_IP" ] && [ "$TASK_IP" != "None" ]; then
+              PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+                --network-interface-ids $TASK_IP \
+                --region $AWS_REGION \
+                --query 'NetworkInterfaces[0].Association.PublicIp' \
+                --output text 2>/dev/null || echo "IP não disponível ainda")
+              
+              echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          echo "task_arn=$TASKS" >> $GITHUB_OUTPUT
+
+      - name: Deploy realizado com sucesso! ✅
+        run: |
+          echo "✅ Deploy concluído com sucesso!"
+          echo "📦 Imagem: ${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+          echo "🎯 Cluster: ${{ env.ECS_CLUSTER }}"
+          echo "🚀 Serviço: ${{ env.ECS_SERVICE }}"
+          echo "⏰ Timestamp: ${{ steps.deploy-ecs.outputs.deploy_timestamp }}"
+          if [ ! -z "${{ steps.get-task-info.outputs.public_ip }}" ] && [ "${{ steps.get-task-info.outputs.public_ip }}" != "IP não disponível ainda" ]; then
+            echo "🌐 API URL: http://${{ steps.get-task-info.outputs.public_ip }}:3000"
+          fi
 
