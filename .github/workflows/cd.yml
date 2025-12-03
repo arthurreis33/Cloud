@@ -1,7 +1,10 @@
 name: CD - Deploy AWS
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
     branches: [main]
   workflow_dispatch:
 
@@ -14,8 +17,8 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Só executa se o CI passou
-    needs: [build-and-test]
+    # Só executa se o workflow CI completou com sucesso
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     
     steps:
       - name: Checkout
@@ -37,10 +40,13 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          echo "🔨 Construindo imagem Docker..."
           docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "📤 Fazendo push das imagens..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "✅ Imagens enviadas com sucesso!"
 
       - name: Deploy no Amazon ECS
         id: deploy-ecs

@@ -8,9 +8,6 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 COPY . .
 
-# Executa testes durante o build
-RUN python -m pytest src/__tests__/ -v || true
-
 FROM python:3.11-slim AS production
 
 WORKDIR /usr/src/app
